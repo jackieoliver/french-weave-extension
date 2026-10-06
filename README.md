@@ -1,5 +1,7 @@
 # French Weave
 
+_Developed September–October 2026 in a private repository, which is still the working copy; this is a snapshot of its main branch._
+
 Chrome extension that weaves a little French into tweets on X, following a leveled schedule (Level 1 = one common word per sentence or two, up to full French clauses by Level 4). Swaps are exact-word replacements chosen by a small model, so a tweet is never rewritten. Swapped words get a faint dotted underline; hover shows the meaning and a sound hint; click flips a word back to English.
 
 Model: Gemini 3.8 Flash on your own Gemini key, with Gemini 3.5 Flash-Lite as the fallback when 3.8 is slow or overloaded (see `eval/live/RESULTS.md`).
