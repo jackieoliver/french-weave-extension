@@ -1,109 +1,131 @@
-# Shared vocabulary across browser and coding assistants
+# Architecture and learning logic
 
-This describes the implemented working system reviewed on **October 6, 2026**.
-It combines the September 22 implementation conversation with the current local
-reader, assistant instructions, extension sync module, and reducer. The public
-extension snapshot in this repository predates this integration.
+The system has four paths: a deterministic curriculum backend, a browser client,
+a read-only coding-assistant client, and a separate Claude chat courier. Source
+and instruction templates are included; private learner records and chats are not.
 
-## System boundaries
+## 1. Curriculum state
 
 ```mermaid
-flowchart TD
-    subgraph Learning["Learning backend · private GitHub repository"]
-        L["Ordered lexicon"] --> R["Deterministic daily reducer"]
-        E[("Append-only learning events")] --> R
-        R --> S[("Versioned state.json")]
-        R --> P["Compact preference summary"]
-    end
-    subgraph Browser["Newer browser extension · separate working project"]
-        B["Validated vocabulary cache"] --> M["Constrained model substitutions"]
-        M --> Q["Observed learning-event queue"]
-    end
-    S -->|"Read and validate"| B
-    Q -->|"Per-device files; stable event IDs"| E
-    subgraph Local["Mac · read-only assistant integration"]
-        H["Python reader via authenticated GitHub CLI"] --> V{"Valid response?"}
-        V -->|Yes| C[("Atomic local cache")]
-        V -->|No| F["Last valid cache or basic fallback"]
-        C --> A["Claude Code + Codex instructions"]
-        F --> A
-    end
-    S -->|GET| H
-    A --> O["Replies use shared stage and word lists"]
-    T["Separate Claude chat courier"] -.->|"Chat-derived events"| E
-    P -.->|"Courier preference update"| T
+flowchart LR
+    A["Ordered lexicon"] --> R["Replay events by UTC day"]
+    E[("Append-only writer files")] --> R
+    R --> W["words.csv: full ledger"]
+    R --> J["state.json: client vocabulary"]
+    R --> P["state-line.txt: chat summary"]
 ```
 
-Solid arrows describe the implemented browser/reader data paths. Dashed arrows
-show the separate Claude chat courier contract; its current scheduling was not
-verified in this documentation pass. **Claude chat and Claude Code are different
-integration paths.** Claude Code and Codex do not send events through the reader.
+[reduce.mjs](../learning/reduce.mjs) rebuilds outputs from the lexicon and events.
+The JSON contains a content-derived version, stage, and Active/Shaky/Known words.
+Queue words stay in the full ledger until admitted. Clients share the same JSON
+rather than independently deciding what enters the curriculum.
 
-## Claude Code and Codex: how the read works
-
-The installed integration has one Python helper, `read-state.py`, referenced by
-both the user's Claude Code `CLAUDE.md` and Codex `AGENTS.md` instructions.
-
-1. At the first non-urgent response, the instructions ask the assistant to run the
-   helper. They request another read after 15 minutes during continued use.
-2. The helper returns a valid local cache younger than 15 minutes. Otherwise it
-   reads `state.json` from the configured private GitHub repository using an
-   existing authenticated GitHub CLI session, with a 15-second subprocess timeout.
-3. It validates the stage, version, word count, status values, required text fields,
-   control characters, and duplicate French entries before accepting the response.
-4. It writes a temporary file and atomically replaces the cache. A failed refresh
-   preserves the last valid state. With no valid state, the helper exits unsuccessfully
-   and the instructions select a small Stage 1 fallback vocabulary.
-5. The assistant treats the JSON as vocabulary data, not as instructions. It uses
-   Active words most, Shaky words often, and Known words freely, following the
-   shared stage and the user's readability rules.
-
-This is an **instruction-driven reader**, not a Claude Code hook, MCP server,
-background scheduler, or hard enforcement layer. Refresh frequency and French
-density depend on the assistant following its instructions. New Claude Code
-sessions were required to pick up the original instruction change.
-
-The reader performs GET requests and local cache writes only. It does not upload
-chat text, record exposures, change word status, or modify the remote curriculum.
-The user's complete vocabulary JSON stays private; no personal event records or
-credentials are included here.
-
-## Why this architecture
-
-| Choice | Engineering rationale |
+| Rule | Current implementation |
 | --- | --- |
-| One reducer owns curriculum state. | Browser and assistant clients consume the same version, avoiding independent word-admission rules that drift across applications. |
-| Read-only assistant integration first. | The implementation conversation explicitly scoped this to sharing a word list. Reliable feedback requires its own event protocol; prose instructions cannot guarantee exposure accounting. |
-| Full JSON for coding assistants. | Active, Shaky, and Known remain explicit. The separate compact preference line summarizes Known above 150 words; the JSON reader avoids that truncation. |
-| Validate before replacing cached state. | A malformed remote file or network outage should not erase a usable vocabulary. Atomic replacement avoids leaving partially written cache JSON. |
-| Separate observed from assumed exposure. | Browser viewport events and presumed chat exposure are different evidence. They should not be silently treated as measured recall. |
-| Separate event writers and retry IDs. | The newer browser writes device/month files, checks remote file SHAs, retries conflicts, and deduplicates stable event IDs on upload. This limits duplicate writes after a lost response. |
+| Admission | Fill 20 Active slots in lexicon order, at most five new words per day. At least five Shaky words pause refills. Seed events bypass the admission cap. |
+| Exposure | A day with `seen` counts one; a day with only `assumed` also counts one. Repeated same-day exposure does not multiply the daily weight. |
+| Active → Known | Three weighted exposure days, a clean recent exposure streak, and (from October 2, 2026) at least one observed `seen` day. Correct self-use (`typed`) promotes directly. |
+| Shaky | `flip` or `asked` makes a word Shaky. Two `peek` days within the reducer's seven-day window can make a Known word Shaky; a peek blocks recent Active graduation and restarts Shaky recovery. |
+| Recovery | Seven quiet days without another negative signal, or `typed`, can restore Known. This is a heuristic, not a recall test. |
+| Stage | Stage 2 at 40 Known, Stage 3 at 150, Stage 4 at 400; a configured override can pin it. |
 
-## Who controls learning pace
+The daily admission cap does not imply five new words encountered every day.
+Encounter rate depends on available Active slots, content, model choices, and use.
+Stage changes do not imply the browser has implemented every stage's presentation.
 
-The ordered lexicon supplies candidate words. The reducer admits at most **five
-new words per day**, fills an Active pool of **20**, and pauses refills when **five
-or more words are Shaky**. These are admission limits, not a guarantee of five new
-words encountered every day. Models choose where eligible words fit in prose.
+## 2. Browser request and feedback path
 
-As inspected, Active-to-Known promotion requires three weighted exposure days
-and a clean recent exposure streak. From October 2, it also requires at least one
-observed browser exposure day; assumed chat exposure alone no longer suffices.
-Correct self-use can promote a word directly. Asking for a meaning or revealing
-English makes it Shaky; peek events also affect promotion/recovery. Shaky words
-can recover after seven quiet days, so **Known remains a heuristic, not a recall-test
-result**. The coding-assistant reader cannot itself advance these statuses.
+```mermaid
+sequenceDiagram
+    participant Page as Content script
+    participant Worker as Extension worker
+    participant Model as Gemini
+    participant Repo as Learning repository
+    Page->>Worker: Eligible text + revision
+    Worker->>Worker: Check site access and decision cache
+    alt Cache miss
+        Worker->>Model: Learning-first prompt + bounded passages
+        Model-->>Worker: Structured replacement spans
+        Worker->>Worker: Validate, cap density, reject stale revision
+    end
+    Worker-->>Page: Validated decisions
+    Page->>Page: Locate exact spans and preserve original nodes
+    Page->>Worker: Visible word / gloss dwell / English reveal
+    Worker->>Worker: Persist event IDs and queue
+    Worker->>Repo: Merge per-device monthly event file
+    Repo-->>Worker: Acknowledge upload
+    Worker->>Worker: Remove acknowledged IDs only
+```
 
-## Evidence and limits
+Site exceptions override the new-site default; the global off switch wins over both.
+Browser host permission is still required. Text handling excludes editors, controls,
+code, hidden/non-English blocks, and recognized sensitive contexts. The model is
+also instructed to avoid unsafe substitutions; keyword filtering is not a complete
+semantic classifier. Enabled reading passages go to the configured model provider.
+Learning events contain word/event metadata, not page text or URLs.
 
-- The September 22 chat records the requested read-only scope, deployment to both
-  instruction files, and successful cache/offline/invalid-data checks at that time.
-- The October 6 inspection confirmed the installed reader's validation, timeout,
-  cache, and fallback logic, plus both instruction-file references. A live read
-  returned a valid stage and vocabulary. No chat contents are reproduced here.
-- The newer extension's source implements state download, queued event upload,
-  conflict retries, and per-device files. Its recorded September browser checks and
-  October evaluation are historical evidence, not a fresh end-to-end run here.
-- No claim is made here that a scheduled courier is currently running, both machines
-  converge live, every assistant obeys the refresh instructions, or language mastery
-  has been measured. The public extension source remains the older X-only snapshot.
+Requests contain at most eight passages of 2,000 characters each. The worker
+serializes model calls, falls back after failure, and honors cooldowns for rate
+limits, overload, and timeouts. Content retries failed passages with a bounded
+backoff. Cached results can still display when a new model call fails.
+
+Vocabulary, settings, permissions, and a cache epoch contribute to the revision.
+The worker rechecks it before storing results; the content side rejects obsolete
+replies. This closes the off/cache-change race that existed in the original snapshot.
+
+`seen` requires viewport entry while the document is visible; prefetch is not enough.
+`peek` requires a 700 ms dwell for the gloss. These are deduplicated per word/day
+per installation. `flip` records a reveal to English, not the return to French.
+The durable queue stops accepting new events at 10,000 entries with an error.
+Uploads handle lost responses by event ID and conflicting file SHAs by rereading
+and merging. This does not create a transaction across browser, GitHub, and reducer.
+
+## 3. Claude Code and Codex
+
+[The Python reader](../integrations/read-state.py) is called by
+[matching instruction sections](../integrations/assistant-instructions.md). The
+instructions request a read at session start and after 15 minutes during use.
+A fresh cache avoids a remote request. Otherwise the helper performs an authenticated
+GitHub GET with a 15-second timeout, validates the JSON, and atomically replaces its
+local cache. A failure keeps the last valid state; no valid state produces an error
+and the instructions fall back to a small basic vocabulary.
+
+This is instruction-driven, not an MCP server, hook, or background service.
+Prompt compliance controls refresh and reply density. Neither assistant writes
+learning events through this reader. The published copy changes only the interpreter
+and GitHub executable paths for portability; configure its endpoint for your own data.
+
+## 4. Claude chats and the courier
+
+Claude chats use a saved preference state line and separate language instructions.
+The inspected courier does **not** scan conversation transcripts. It compares the
+preference line with `last-synced-line.txt`: newly Known words imply `typed`; newly
+Shaky words or changed Shaky dates imply `asked`. It adds `assumed` for Active words,
+replays the reducer, commits changed files, and then replaces just the state line.
+The [published courier prompt](../integrations/claude-courier-prompt.md) records this
+protocol with the account name generalized.
+
+**Observed October 6:** the cloud courier was paused, with its latest listed run
+on October 4 and a configured daily 9 AM schedule. This publication did not run,
+resume, or modify it. Browser uploads and read-only coding-assistant reads are
+separate and do not require that courier to be enabled.
+
+Preference changes are a lossy signal. If chats do not update the line, the courier
+cannot recover the missing event; multiple changes between runs may collapse.
+Its date/word/event duplicate check is not the browser's UUID upload protocol.
+A Git commit followed by a preference-edit failure can leave the two out of sync;
+there is no cross-service atomic commit. Above 150 Known words, the reducer's compact
+line summarizes the set, while `state.json` retains every eligible word.
+
+## Why the design evolved
+
+The September setup discussion identified two foundational errors to avoid: counting
+prefetch as exposure, and reusing cached decisions after vocabulary changes. The
+September 22 implementation added shared state, retry-safe uploads, site controls,
+and separate read-only assistant integration. The October review found known-word
+examples dominating model choices, hover lookups missing from feedback, and
+assumed-only graduation. Version 0.3 added learning-first prompts, peek events,
+cooldowns/retries, and the observed-exposure requirement in the reducer.
+
+[Prompt behavior](PROMPTS.md) distinguishes instructions from enforced checks.
+[Verification](VERIFICATION.md) separates current tests from historical evidence.

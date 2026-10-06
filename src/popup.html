@@ -1,41 +1,68 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>French Weave</title>
 <style>
-  body { width: 250px; margin: 0; padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; color: #111; background: #fff; }
-  h1 { font-size: 14px; margin: 0 0 10px; }
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 0; }
-  .row > span:first-child { flex: 0 0 auto; }
-  input[type=number], input[type=password], select { width: 130px; box-sizing: border-box; padding: 3px 5px; font: inherit; }
-  input[type=checkbox] { width: 18px; height: 18px; }
-  button { font: inherit; padding: 3px 9px; }
-  #levelInfo, #status { color: #666; font-size: 12px; }
+  * { box-sizing: border-box; }
+  body { width: 340px; margin: 0; padding: 16px; font: 13px/1.45 system-ui, sans-serif; color: #18201c; background: #fafbf8; }
+  h1 { font-size: 17px; margin: 0; }
+  h2 { font-size: 13px; margin: 0 0 8px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 9px 0; }
+  section { border-top: 1px solid #dce1d8; margin-top: 14px; padding-top: 13px; }
+  input, select, button { font: inherit; }
+  input[type=password], input[type=number], select { width: 165px; padding: 5px 6px; border: 1px solid #c4cbc0; border-radius: 5px; background: #fff; color: inherit; }
+  input[type=checkbox] { width: 18px; height: 18px; accent-color: #326448; }
+  button { border: 1px solid #b8c6b7; background: #edf2e9; color: inherit; border-radius: 5px; padding: 6px 9px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .small { color: #5b685c; font-size: 12px; margin: 6px 0; overflow-wrap: anywhere; }
+  .error { color: #a32b22; }
+  #siteName { display: block; max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
+  #siteList { max-height: 95px; overflow: auto; }
+  #siteList .row { margin: 5px 0; }
+  #notice:empty { display: none; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; }
   @media (prefers-color-scheme: dark) {
-    body { color: #eee; background: #15181c; }
-    input, select, button { color: #eee; background: #23272e; border: 1px solid #444; }
-    #levelInfo, #status { color: #aaa; }
+    body { color: #e9eee5; background: #18201c; }
+    section { border-color: #3b473e; }
+    input[type=password], input[type=number], select, button { color: inherit; background: #27332b; border-color: #586459; }
+    .small { color: #b6c0b2; } .error { color: #ffb4a8; }
   }
 </style>
 </head>
 <body>
-  <h1>French Weave</h1>
-  <label class="row"><span>On</span><input type="checkbox" id="enabled"></label>
-  <div class="row"><span>Level</span><span id="levelInfo"></span></div>
-  <label class="row"><span>Force level</span>
-    <select id="levelOverride">
-      <option value="0">Auto</option>
-      <option value="1">1</option>
-      <option value="2">2</option>
-      <option value="3">3</option>
-      <option value="4">4</option>
-    </select>
-  </label>
-  <label class="row"><span>Pause days</span><input type="number" id="pauseDays" min="0" step="1"></label>
-  <label class="row"><span>Model</span><select id="model"></select></label>
-  <label class="row"><span>Gemini key</span><input type="password" id="apiKey" placeholder="AIza…" autocomplete="off"></label>
-  <div class="row"><button id="clearCache">Clear cache</button><span id="status"></span></div>
+  <div class="row"><h1>French Weave</h1><label>On <input type="checkbox" id="enabled"></label></div>
+  <div id="operation" class="small" role="status"></div>
+  <label class="row"><span id="siteName">This site</span><input type="checkbox" id="siteEnabled" aria-label="Enable on this site"></label>
+  <label class="row"><span>New sites</span><select id="newSitesEnabled"><option value="true">On by default</option><option value="false">Off by default</option></select></label>
+  <button id="grantSites">Allow all websites</button>
+  <p class="small" id="accessNote">Chrome needs website access before French Weave can run beyond X.</p>
+  <details><summary>Site exceptions</summary><div id="siteList"></div></details>
+  <section>
+    <h2>Learning sync</h2>
+    <div id="syncStatus" class="small" role="status"></div>
+    <div class="row"><button id="syncNow">Sync now</button><span id="queue" class="small"></span></div>
+    <details><summary>Connect GitHub</summary>
+      <p class="small">Uses jackieoliver/french-weave-data. A fine-grained token needs Contents: read and write for that repo only. The token stays on this device.</p>
+      <label class="row"><span>GitHub token</span><input id="githubToken" type="password" autocomplete="off" placeholder="Not connected"></label>
+      <div class="row"><button id="connect">Save &amp; sync</button><button id="disconnect">Disconnect</button></div>
+    </details>
+  </section>
+  <section>
+    <div class="row"><span>Level</span><span id="levelInfo" class="small"></span></div>
+    <label class="row"><span>Force level</span><select id="levelOverride"><option value="0">Auto</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
+    <details><summary>Model and settings</summary>
+      <label class="row"><span>Pause days</span><input id="pauseDays" type="number" min="0" max="3650" step="1"></label>
+      <p class="small">Pause days affect the date schedule only when no shared vocabulary has been downloaded.</p>
+      <label class="row"><span>Model</span><select id="model"></select></label>
+      <label class="row"><span>Gemini key</span><input id="apiKey" type="password" autocomplete="off" placeholder="Add key"></label>
+      <button id="saveKey">Save key</button>
+    </details>
+    <div class="row"><button id="clearCache">Clear cache &amp; retry</button></div>
+  </section>
+  <p class="small">Enabled pages send eligible reading passages to Gemini. Forms and editable text are excluded. Keys and page text are never uploaded to the learning repo.</p>
+  <div id="notice" class="small error" role="alert"></div>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

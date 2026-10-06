@@ -1,94 +1,89 @@
 # French Weave
 
-**Learn vocabulary during ordinary reading and coding conversations.**
+**A shared vocabulary system for browser reading, Claude chats, and coding assistants.**
 
-Built by **Jackie Oliver**. The browser component makes small, reversible French
-substitutions in English text. A separate shared-state integration lets Claude Code
-and Codex use the same learning stage and vocabulary in their replies.
+Built by **Jackie Oliver**. French Weave adds small, reversible French substitutions
+to everyday English reading. A shared learning backend tracks vocabulary, while
+browser and chat prompts decide where words fit naturally.
 
-**Stack:** JavaScript · Chrome extensions · structured model output · Python ·
-GitHub-backed learning state
+**JavaScript · Chrome/Firefox extensions · Python · Node.js · GitHub-backed state**
 
-## What is in this repository
+This repository now includes the **0.3 browser source**, the learning reducer, a
+portable copy of the Claude Code/Codex reader, and the assistant instruction template.
+Personal learning records, credentials, and conversation transcripts are excluded.
 
-This public repository is a snapshot of the original **X/Twitter extension**,
-developed in September–October 2026. Its source includes model-selected exact-word
-swaps, validation, caching, fallback, tooltips, and click-to-reveal English.
+## Start here
 
-The newer working project adds broader website support and learning-state sync.
-The **Claude Code/Codex integration is configured separately on the developer's
-Mac**. Its architecture and verified behavior are documented here; its helper,
-private vocabulary/event data, and newer extension source are not bundled in this
-snapshot. Cloning this repository alone does not install that integration.
+- [System architecture and learning logic](docs/shared-state-integration.md)
+- [Prompts: browser, coding assistants, and Claude chat courier](docs/PROMPTS.md)
+- [Browser setup and controls](docs/SETUP.md)
+- [Verification and development history](docs/VERIFICATION.md)
 
-[Shared vocabulary and Claude Code integration →](docs/shared-state-integration.md)
-
-## Browser inference pipeline — source included here
+## System overview
 
 ```mermaid
-flowchart TD
-    subgraph Page["Content script · X/Twitter"]
-        A["Observe eligible tweet text"] --> B["Filter and batch text"]
-        I["Apply exact-word swaps"] --> J["Tooltip and English reveal"]
-    end
-    subgraph Worker["Extension service worker"]
-        C{"Cached decision?"} -->|Miss| D["Queue model request"]
-        D --> E["Structured response + fallback"]
-        E --> F["Validate vocabulary and swaps"]
-        F --> G[("Decision cache")]
-    end
-    B --> C
-    C -->|Hit| I
-    G --> I
-    E -->|All requests fail| H["Keep uncached text in English"]
+flowchart LR
+    L["Ordered lexicon + learning events"] --> R["Deterministic reducer"]
+    R --> S[("Versioned vocabulary")]
+    S --> B["Browser extension"]
+    S --> C["Claude Code / Codex reader"]
+    R --> P["Claude chat preference summary"]
+    B -->|"Observed events"| L
+    P -.-> Q["Claude chat courier"]
+    Q -.->|"Preference changes + assumed exposure"| L
 ```
 
-## Engineering choices
+The reducer owns word admission and stage. Models choose contextual wording; they
+do not directly promote vocabulary. The coding-assistant reader is read-only.
+The separate Claude chat courier was **paused when inspected on October 6, 2026**.
 
-| Decision | Why it matters |
+## Engineering decisions
+
+| Problem | Implementation |
 | --- | --- |
-| Request replacement spans rather than rewritten paragraphs. | The original text remains the reference; the DOM layer can reveal English without regenerating the passage. |
-| Validate model output in code. | Structured JSON makes parsing predictable, but it does not establish linguistic correctness. Vocabulary and span checks constrain what can be painted. |
-| Separate content, inference, and storage. | DOM handling stays separate from provider calls; injected fetch/storage adapters make core behavior testable without Chrome. |
-| Batch requests and cache decisions. | Repeated page renders can reuse decisions. Cache misses go through a serialized request queue. |
-| Fall back, then leave text unchanged. | A configured fallback model gets one attempt after failure. If both fail, cached results remain usable and uncached passages stay English. |
-| Keep curriculum ownership outside the language model. | In the newer shared-state system, the reducer admits words and the assistants choose where to use them. See the integration design for the distinction. |
+| Models repeat easy, already-known words. | The prompt puts learning words first, prioritizes ones not shown today, and treats Known words as filler. The validator keeps learning words first when applying the density ceiling. |
+| Model output can rewrite or damage a page. | Request exact replacement spans with context; validate vocabulary and anchors before editing plain text nodes. Restore original nodes when disabled. |
+| A request can finish after the user disables a site or changes vocabulary. | A revision derived from settings, vocabulary, permissions, and cache epoch invalidates stale work before publishing decisions. |
+| Retries can duplicate learning events. | Persistent queue, stable event IDs, per-device/month files, and SHA conflict retries preserve acknowledged events across interrupted uploads. |
+| Prefetch is not evidence of reading. | Record `seen` when a word enters the visible viewport, and `peek` after a 700 ms gloss dwell; keep these distinct from assumed chat exposure. |
+| Network loss should not erase progress. | Keep validated vocabulary and queued events locally; the Python reader retains a last-good cache and replaces it atomically. |
+| Assistant context is not reliable event telemetry. | Claude Code/Codex read shared JSON only. The chat courier's preference-diff protocol is documented separately, including its limitations. |
 
-## Read the code
+## Read the implementation
 
-- [content.js](src/content.js): observation, batching, per-tab decisions, and interaction.
-- [engine.js](src/engine.js) and [gemini.js](src/gemini.js): provider requests, fallback, response parsing.
-- [levels.js](src/levels.js) and [text.js](src/text.js): vocabulary checks and DOM replacement.
-- [cache.js](src/cache.js): persistent decisions with an injected storage adapter.
-- [Tests](test): request shape, fallback, vocabulary, prompt, and DOM behavior.
+| Component | Entry points |
+| --- | --- |
+| Browser orchestration | [background.js](src/background.js), [content.js](src/content.js), [page.js](src/page.js) |
+| Prompt and validation | [prompt.js](src/prompt.js), [levels.js](src/levels.js), [text.js](src/text.js) |
+| Model fallback and cooldown | [engine.js](src/engine.js), [gemini.js](src/gemini.js) |
+| Learning uploads and credentials | [sync.js](src/sync.js), [vault.js](src/vault.js) |
+| Curriculum replay | [reduce.mjs](learning/reduce.mjs), [backend protocol](learning/README.md) |
+| Coding-assistant integration | [read-state.py](integrations/read-state.py), [instruction template](integrations/assistant-instructions.md) |
 
-## Install this snapshot
-
-1. Open `chrome://extensions`, enable Developer mode, and choose **Load unpacked**.
-2. Select this repository folder.
-3. Open the extension popup and enter your own Gemini key.
-4. Open X/Twitter and use the on/off, level, model, and cache controls.
-
-The snapshot contains specific model IDs in [gemini.js](src/gemini.js); availability
-must be checked against your provider account. This documentation pass did not make
-paid model requests or validate those IDs live.
-
-## Develop and evaluate
+## Verify locally
 
 ```sh
-bun install
+bun install --frozen-lockfile
 bun test
+python3 integrations/test-read-state.py
+node learning/test-reducer.mjs
+bun run build:firefox
 ```
 
-On October 6, 2026, the 23 core engine, vocabulary, and prompt tests passed.
-The DOM suite and live provider/browser flows were not rerun in this documentation pass.
+The checks use mocks and synthetic fixtures; they do not modify a real learning
+repository or send text to a model. The browser code points to the original private
+data repository by default. See setup for configuring a repository you control.
 
-[Model evaluations](eval/RESULTS.md) and [recorded live evaluations](eval/live/RESULTS.md)
-are dated experiments, not current accuracy guarantees. The 27-tweet live input set
-is not included; `eval/live/run_batches.py` expects your own local dataset.
-[Requirements](REQUIREMENTS.md) and [implementation plan](PLAN.md) describe the
-original snapshot; later integration behavior is scoped separately in the design note.
+## Scope and evidence
 
-The public snapshot does not include the newer fixes for accent ambiguity, empty
-replacements, or open-tab cache invalidation recorded in the working project's
-September audit. Treat it as an engineering example, not the latest installable build.
+The October 6 publication passed **57 browser tests / 775 assertions**, reader
+cache/fallback checks, synthetic reducer replay checks, and Firefox packaging.
+This is a source update, not an automatic update of an installed browser extension.
+Full French clauses at Levels 3/4 remain unimplemented in the extension; it uses
+Level 2 rules. Browser model IDs are configuration choices recorded in source,
+not a claim of current provider availability.
+
+An October 2 experiment reported learning-word share increasing from **23% to 42%**
+over 54 passages after prompt changes. This was a small historical evaluation with
+model/fallback variation, not a controlled learning-outcome study or current benchmark.
+See [evidence and limits](docs/VERIFICATION.md).

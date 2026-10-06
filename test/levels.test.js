@@ -53,6 +53,17 @@ describe('word lists', () => {
 });
 
 describe('validateSwaps', () => {
+  test('keeps accented homographs distinct and rejects blank replacements', () => {
+    expect(validateSwaps(2, [{ o: 'or', f: 'ou' }])[0].f).toBe('ou');
+    expect(validateSwaps(2, [{ o: 'where', f: 'où' }])[0].f).toBe('où');
+    expect(validateSwaps(2, [{ o: 'and', f: '' }, { o: 'and', f: '  ' }])).toEqual([]);
+  });
+  test('shared words replace the fixed list and retain the event spelling', () => {
+    const words = [{ fr: 'la lumière', en: 'the light', hint: 'loo-myair', status: 'active' }];
+    expect(validateSwaps(1, [{ o: 'light', f: 'lumiere' }, { o: 'and', f: 'et' }], words))
+      .toEqual([{ o: 'light', f: 'lumière', g: 'light', h: 'loo-myair', ctx: '', word: 'la lumière', status: 'active' }]);
+    expect(resolveLevel({}, d(2026, 9, 20), { stage: 2 }).effective).toBe(2);
+  });
   test('keeps list words, canonicalizes accents, fills gloss and hint from the list', () => {
     const out = validateSwaps(1, [{ o: 'very', f: 'tres', g: 'x', h: 'y', ctx: 'is very good' }]);
     expect(out).toEqual([{ o: 'very', f: 'très', g: 'very', h: 'treh', ctx: 'is very good' }]);

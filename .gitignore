@@ -1,3 +1,13 @@
 .env
 *.local
 node_modules/
+dist/
+
+# Local integration cache and private learner data
+integrations/state.json
+**/__pycache__/
+learning/lexicon.csv
+learning/events/
+learning/words.csv
+learning/state.json
+learning/state-line.txt

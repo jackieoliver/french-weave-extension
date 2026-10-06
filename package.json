@@ -1,11 +1,14 @@
 {
   "name": "french-weave",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Chrome extension that swaps a few English words in tweets on X for French.",
+  "description": "Chrome extension for sparse French substitutions while reading, with shared GitHub learning state.",
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "build:firefox": "node scripts/build-firefox.mjs",
+    "lint:firefox": "node scripts/build-firefox.mjs && bunx web-ext@10 lint -s dist/firefox",
+    "sign:firefox": "node scripts/build-firefox.mjs && bunx web-ext@10 sign --channel unlisted -s dist/firefox -a dist"
   },
   "devDependencies": {
     "happy-dom": "^20.14.5"

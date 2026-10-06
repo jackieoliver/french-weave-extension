@@ -1,21 +1,55 @@
 {
   "manifest_version": 3,
   "name": "French Weave",
-  "version": "0.1.0",
-  "description": "Swaps a few English words in tweets on X for French, following a level schedule.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://generativelanguage.googleapis.com/*"],
-  "background": { "service_worker": "src/background.js", "type": "module" },
+  "version": "0.3.0",
+  "description": "Learn French while reading, with site controls and shared vocabulary sync.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.github.com/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
   "content_scripts": [
     {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["src/content-loader.js"],
-      "css": ["src/content.css"],
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "src/content-loader.js"
+      ],
+      "css": [
+        "src/content.css"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
-    { "resources": ["src/*.js"], "matches": ["https://x.com/*", "https://twitter.com/*"] }
+    {
+      "resources": [
+        "src/*.js"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
+    }
   ],
-  "action": { "default_popup": "src/popup.html", "default_title": "French Weave" }
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "French Weave"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtgMZB/vIocUrS/AUhKqsfAYnm6Wordj4E3y5EWyzb37DuKBDAqaGVWjGMpHkfc6uqjOO6oxy4dl5dEpKSMJG4clYWXBJIxOlIgbvcLaGnxpuTZ1I5dPd/bjEKmsflpCvxtVdlxU5GEbqE5ccix+q8v9wEUW8Hpg3OrH0MWa78Z3xJPRVBF5QziCa45QYFTHZBt+jxglXseOdqlO9fSEn2uRA1lgKXF842R55ODbQsvcsuZBn4rUpl8LwEVpccVMJtJrraB+UC0BvkVIBaqlHEf7PPEVdKEQL0M7XfLGHu4rxv4TzHspCrFFT6kmILdjbq9zg26M5EdJCv+PvMB9zWQIDAQAB"
 }
