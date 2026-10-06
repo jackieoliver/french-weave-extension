@@ -1,0 +1,12 @@
+[
+ {"id":1,"text":"shipped the new onboarding flow today and honestly it went smoother than expected. small team, big week."},
+ {"id":2,"text":"I'm so tired of people saying AI is just autocomplete. It's autocomplete the way a jet is just a fan."},
+ {"id":3,"text":"Well, that was a mistake. Deployed on a Friday and now I'm debugging at 11pm."},
+ {"id":4,"text":"Reminder: if you take ibuprofen and you're on blood thinners, talk to your doctor first. Not medical advice but please be careful."},
+ {"id":5,"text":"The problem with most productivity apps is that they're built for people who are already productive."},
+ {"id":6,"text":"Sam and Dave are playing at the Fillmore on Oct 3, tickets are $45. Who's in?"},
+ {"id":7,"text":"Maybe I'm wrong but I think the answer is always 'ship it and see.' You learn more in a week of feedback than a month of planning."},
+ {"id":8,"text":"lol"},
+ {"id":9,"text":"To fix it run `git rebase -i HEAD~3` and squash the last two commits. Works every time."},
+ {"id":10,"text":"Here's the thing about SF: everyone is very busy and also very available for coffee. Pick one."}
+]

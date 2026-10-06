@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "French Weave",
+  "version": "0.1.0",
+  "description": "Swaps a few English words in tweets on X for French, following a level schedule.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://generativelanguage.googleapis.com/*"],
+  "background": { "service_worker": "src/background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["src/content-loader.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    { "resources": ["src/*.js"], "matches": ["https://x.com/*", "https://twitter.com/*"] }
+  ],
+  "action": { "default_popup": "src/popup.html", "default_title": "French Weave" }
+}
